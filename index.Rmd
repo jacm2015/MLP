@@ -1,0 +1,204 @@
+---
+title: "Coursera. Data Science Specialization.       
+Machine Learning Project"
+author: "JAC"
+date: "April 17,  2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#  Executive summary.
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self-movement,  a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns
+in their behavior. One thing that people regularly do is quantify how much of a
+particular activity they do, but they rarely quantify how well they do it.   
+
+In this project,  goal will be to use data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants (See reference 3). They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Models will be selected to predict the manner in which they did the exercise.
+
+Using a tree classification method, the article identifies key variables  based on the variable importance (see reference 1). The number of variables has been reduced from 160 to 25. Total accuracy for the selected model has been estimated on 99.27 %. 
+
+```{r  ,echo=FALSE }
+ rm(list=ls())
+setwd("~/MisApuntes/Estadistica/DAtaScienceCourse/08_PracticalMachineLearning/proyecto")
+
+```
+# Exploratory data analysis.
+
+## Data loading.
+
+Data for this project are available  from url1 (training set) and url2 (testing).
+
+```{r  ,echo=TRUE , message=FALSE, warning=FALSE}
+library(caret) ; library(rpart)
+library(rpart.plot) ; library(randomForest)
+# training data
+url1 = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#testing
+url2 =  "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+file = file.exists("pml-training.csv")
+if  (file)  {
+    training <- read.csv("pml-training.csv", header=TRUE, na.strings=c("NA","#DIV/0!",""))
+} else {
+    training <- read.csv(url1, header=TRUE, na.strings=c("NA","#DIV/0!",""))
+    }
+
+```
+
+## Exploratory data analysis
+
+Training data set includes  19622 observations and 160 variables
+```{r exploratory ,echo=TRUE }
+dim(training) 
+````
+
+The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. They performed  the exercises in 5 different ways. Exactly according to the specification(Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+```{r exploratory1 ,echo=TRUE }
+with(training, table(user_name, classe)) 
+
+```
+
+
+## Data Cleaning
+
+Variables one to six are removed from the dataset. They include id record, operator's names,  date and time information not relevant for the analysis.
+
+nearZerovar R function has been used to remove 36 variables predictors that have both of the following characteristics:    
+- They have very few unique values relative to the number of samples.   
+- The ratio of the frequency of the most common value to the frequency of the second most common value is large.    
+
+
+```{r  ,echo=TRUE , message=FALSE, results=FALSE}
+training = training[, -(1:6)]  
+nzv <- nearZeroVar(training) 
+training <- training[,-nzv] # remove 36 variables
+
+```
+
+65 Variables which have more that 95% of  NA values has also been removed from the dataset.
+
+```{r  ,echo=TRUE, results=FALSE }
+# remove variables than more than 95% are   NA . 
+valueNA <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training = training [ , -valueNA == F] # 65 features to removed.
+
+```
+
+
+# Model Selection.
+
+Training data is split in ptrain1 and ptrain2 data sets. Model is trained with ptrain1  and accuracy is  assessed with ptrain 2.
+
+```{r splitdata, echo=TRUE}
+# split train data 
+set.seed(1467)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+ptrain1 <- training[inTrain, ]; ptrain2 <- training[-inTrain, ]
+
+```
+
+A CART model is initially used to estimate variable importance. We pick up the 25 most important variables (References 1 and 2)  to be used on the next model (Random forest).
+ 
+```{r model4, echo=TRUE, fig.align = "center" }
+## m4. Variable Selection
+set.seed(14674)
+CartModel = rpart(classe~., data=ptrain1, method="class", minbucket=25)
+# prp(CartModel) plot model tree.
+plot(CartModel$variable.importance, ylab= "Variable Importance")
+grid(); abline(v=25, col="red"); abline(h=205, col="red")
+var_list =  CartModel$variable.importance  > 205
+Var_model = CartModel$variable.importance[var_list]
+names(Var_model)
+
+```
+
+Model accuracy is 0.74. Accuracy will be improved on the next model selection.
+
+```{r model4a, echo=TRUE}
+## m4
+p41 = predict(CartModel, newdata=ptrain2, type="class")
+round(confusionMatrix(ptrain2$classe, p41)$overall, 2)
+
+```
+
+We will run a  Random Forest model  using the 25 selected variables. For the new model OOB estimate of  error rate is 0.82%. Accuracy using ptrain2 has increased to 0.9926, which it is acceptable for this project.
+
+ 
+```{r model6, echo=TRUE}
+## m6. rf variable selection from Cart Model
+set.seed(32566)
+ 
+time1 = proc.time()
+randForest6 = randomForest(classe~ roll_belt+ accel_belt_z + pitch_belt + pitch_forearm  +  accel_dumbbell_y +total_accel_dumbbell + magnet_dumbbell_y  + total_accel_belt + magnet_dumbbell_z +  accel_forearm_x   +  yaw_belt   + magnet_belt_z +roll_forearm  +  accel_belt_y   +  roll_dumbbell +  magnet_belt_x    +    accel_belt_x + yaw_arm + accel_dumbbell_x +  yaw_forearm   +  magnet_forearm_z +  accel_forearm_z +  magnet_belt_y  + accel_forearm_y  , data=ptrain1, ntree = 500)
+time2 = proc.time()
+time = time2 - time1
+(randForest6)
+
+
+p61 = predict(randForest6, newdata = ptrain2)
+round(confusionMatrix(ptrain2$classe, p61)$overall ,4)
+
+```
+
+For comparison purposes I  run the previous Random Forest model with all variables.
+
+ 
+```{r model3, echo=TRUE}
+# m3  -->>  rF with no variable selection
+set.seed(32516)
+library(randomForest)
+time13 = proc.time()
+randForest = randomForest(classe~., data=ptrain1, ntree = 500)
+time23 = proc.time()
+time3 = time23 - time13
+
+(randForest)
+
+# varImpPlot(randForest) # Dotchart of variable importance 
+## OOB estimate of  error rate: 0.23%
+
+p31 = predict(randForest, newdata = ptrain2)
+round(confusionMatrix(ptrain2$classe, p31)$overall ,4)
+
+```
+
+Note how well has performed  Random Forest  with variables selection (m6). Estimated accuracy moves from 0.9978 to 0.9927 
+
+# Conclusions
+
+Random forest model selected  - with variable selection-  shows an acceptable  accuracy, a no impact on accuracy for removed variables. It is possible to tune the model for other settings  with the variable importance method.
+
+# Course Project Prediction Quiz Portion
+
+Apply your machine learning algorithm to the 20 test cases available in the test data.
+
+
+```{r prediction_m6 , echo=TRUE}
+ url2 =  "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+file = file.exists("pml-testing.csv")
+if  (file)  {
+    testing <- read.csv("pml-training.csv", header=TRUE, na.strings=c("NA","#DIV/0!",""))
+} else {
+    testing <- read.csv(url1, header=TRUE, na.strings=c("NA","#DIV/0!",""))
+    }
+p62 = predict(randForest6, newdata = testing)
+
+
+```
+ 
+
+# References.
+
+1.  Variable Importance Plot and Variable Selection. 
+<http://www.r-bloggers.com/variable-importance-plot-and-variable-selection/>
+
+2. Random Forest
+<https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm>
+
+3. Project background
+ <http://groupware.les.inf.puc-rio.br/har>  (see the section on the Weight Lifting Exercise Dataset).
